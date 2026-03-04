@@ -277,11 +277,6 @@ class SimpleMultiModalModule(nn.Module):
             nn.Linear(embed_dim * 4, embed_dim)
         )
 
-        self.img_scores = 0
-        self.text_scores = 0
-        self.joint_scores = 0
-        self.case_num = 0
-
     def weighted_fusion(self, text_cross_attn, img_cross_attn):
         """
         加权融合 text_cross_attn 和 img_cross_attn
@@ -335,28 +330,144 @@ class SimpleMultiModalModule(nn.Module):
         output = residual_joint_text_embedding + self.dropout(weighted_attn)
         output = self.norm3(output)
 
-        valid_joint_num = (~(joint_text_embedding.sum(dim=-1) == 0)).squeeze(0).sum().item()
-
-        text_cos_score = np.mean(np.array(F.cosine_similarity(
-            query_image_embedding.expand(size=[query_image_embedding.shape[0],100,query_image_embedding.shape[2]]),
-            output, dim=-1)[:valid_joint_num].cpu()))
-
-        img_cos_score = np.mean(np.array(F.cosine_similarity(
-            category_text_embedding.expand(size=[category_text_embedding.shape[0],100,category_text_embedding.shape[2]]),
-            output, dim=-1)[:valid_joint_num].cpu()))
-
-        joint_cos_score = np.mean(np.array(F.cosine_similarity(
-            residual_joint_text_embedding, output, dim=-1).squeeze(0)[:valid_joint_num].cpu()))
-
-        self.text_scores = (self.text_scores * self.case_num + text_cos_score) / (self.case_num + 1)
-        self.img_scores = (self.img_scores * self.case_num + img_cos_score) / (self.case_num + 1)
-        self.joint_scores = (self.joint_scores * self.case_num + joint_cos_score) / (self.case_num + 1)
-        self.case_num += 1
-        print(" text_cos_score: {}, img_cos_score: {}, joint_cos_score: {}".format(text_cos_score, img_cos_score, joint_cos_score))
         return output
 
     def process(self, image_embedding, joint_text_embedding, category_text_embedding):
         return self.forward(image_embedding, joint_text_embedding, category_text_embedding)
+
+# class SimpleMultiModalModule(nn.Module):
+#     """
+#     setting 29 / 30
+#     对原本的setting24中的模块进行了调整：
+#         1.删除了repeat [bz,1,embed_dim] => [bz,100,embed_dim]的步骤
+#         2.删除了部分冗余的残差连接设计
+#         3.调整了多模态embedding的加权处理
+#     """
+#     def __init__(self, embed_dim=512, num_heads=8, dropout=0.1):
+#         """
+#         初始化 MultiModalAttentionModule
+#         :param embed_dim: 输入 embedding 的维度（例如 512）
+#         :param num_heads: 多头注意力的头数
+#         :param dropout: Dropout 概率
+#         """
+#         super(SimpleMultiModalModule, self).__init__()
+#         self.embed_dim = embed_dim
+#         self.num_heads = num_heads
+#
+#         self.inter_attention_layer = AttentionLayer(embed_dim, num_heads, dropout=dropout)
+#         self.text_cross_attention_layer = AttentionLayer(embed_dim, num_heads, dropout=dropout)
+#         self.image_cross_attention_layer = AttentionLayer(embed_dim, num_heads, dropout=dropout)
+#
+#         self.non_linear = nn.Sequential(
+#             nn.Linear(embed_dim, embed_dim * 4),
+#             nn.ReLU(),
+#             nn.Dropout(dropout),
+#             nn.Linear(embed_dim * 4, embed_dim)
+#         )
+#
+#         self.norm1 = nn.LayerNorm(embed_dim)
+#         self.norm2 = nn.LayerNorm(embed_dim)
+#         self.norm3 = nn.LayerNorm(embed_dim)
+#         self.dropout = nn.Dropout(dropout)
+#
+#         # 加权融合的可学习参数
+#         self.weight_category = nn.Linear(embed_dim, 1)
+#         self.weight_image = nn.Linear(embed_dim, 1)
+#
+#         self.inter_ffn = nn.Sequential(
+#             nn.Linear(embed_dim, embed_dim * 4),
+#             nn.ReLU(),
+#             nn.Dropout(dropout),
+#             nn.Linear(embed_dim * 4, embed_dim)
+#         )
+#
+#         self.weighted_ffn = nn.Sequential(
+#             nn.Linear(embed_dim, embed_dim * 4),
+#             nn.ReLU(),
+#             nn.Dropout(dropout),
+#             nn.Linear(embed_dim * 4, embed_dim)
+#         )
+#
+#         self.img_scores = 0
+#         self.text_scores = 0
+#         self.joint_scores = 0
+#         self.case_num = 0
+#
+#     def weighted_fusion(self, text_cross_attn, img_cross_attn):
+#         """
+#         加权融合 text_cross_attn 和 img_cross_attn
+#         :param text_cross_attn: 文本交叉注意力输出，形状为 [batch_size, 100, embed_dim]
+#         :param img_cross_attn: 图像交叉注意力输出，形状为 [batch_size, 100, embed_dim]
+#         :return: 加权融合后的输出，形状为 [batch_size, 100, embed_dim]
+#         """
+#         weight_category = torch.sigmoid(self.weight_category(text_cross_attn))  # [batch_size, 100, 1]
+#         weight_image = torch.sigmoid(self.weight_image(img_cross_attn))        # [batch_size, 100, 1]
+#         weighted_output = weight_category * text_cross_attn + weight_image * img_cross_attn  # [batch_size, 100, embed_dim]
+#         return weighted_output
+#
+#     def forward(self, image_embedding, joint_text_embedding, category_text_embedding):
+#         """
+#         前向传播
+#         :param category_text_embedding: 类别文本 embedding，形状为 [batch_size, embed_dim]
+#         :param image_embedding: 查询图像 embedding，形状为 [batch_size, embed_dim]
+#         :param joint_text_embedding: 联合文本 embedding，形状为 [batch_size, 100, embed_dim]
+#         :return: 输出，形状为 [batch_size, 100, embed_dim]
+#         """
+#         # 保存残差连接
+#         residual_joint_text_embedding = joint_text_embedding  # [batch_size, 100, embed_dim]
+#
+#         # 自注意力层：计算 category_text_embedding 和 query_image_embedding 的自注意力
+#         # [batch_size, 2, embed_dim]
+#         inter_embedding = torch.concat([category_text_embedding.unsqueeze(1), image_embedding.unsqueeze(1)],dim=1)
+#         inter_attn, _ = self.inter_attention_layer(query=inter_embedding,
+#                                                    key=inter_embedding,
+#                                                    value=inter_embedding)
+#         inter_ffn_output = self.inter_ffn(inter_attn)
+#         inter_attn = inter_attn + self.dropout(inter_ffn_output)
+#         inter_attn = self.norm1(inter_attn)
+#
+#         category_text_embedding = inter_attn[:, 0:1, :]  # [batch_size, 1, embed_dim]
+#         query_image_embedding = inter_attn[:, 1:2, :]    # [batch_size, 1, embed_dim]
+#
+#         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! no residual add
+#         text_attn, _ = self.text_cross_attention_layer(query=joint_text_embedding,
+#                                                        key=category_text_embedding,
+#                                                        value=category_text_embedding)
+#         img_attn, _ = self.image_cross_attention_layer(query=joint_text_embedding,
+#                                                        key=query_image_embedding,
+#                                                        value=query_image_embedding)
+#
+#         # [batch_size, 100, embed_dim]
+#         weighted_attn = self.weighted_fusion(text_attn, img_attn)
+#         weighted_ffn_output = self.weighted_ffn(weighted_attn)
+#         weighted_attn = weighted_attn + self.dropout(weighted_ffn_output)
+#         weighted_attn = self.norm2(weighted_attn)
+#
+#         output = residual_joint_text_embedding + self.dropout(weighted_attn)
+#         output = self.norm3(output)
+#
+#         valid_joint_num = (~(joint_text_embedding.sum(dim=-1) == 0)).squeeze(0).sum().item()
+#
+#         text_cos_score = np.mean(np.array(F.cosine_similarity(
+#             query_image_embedding.expand(size=[query_image_embedding.shape[0],100,query_image_embedding.shape[2]]),
+#             output, dim=-1)[:valid_joint_num].cpu()))
+#
+#         img_cos_score = np.mean(np.array(F.cosine_similarity(
+#             category_text_embedding.expand(size=[category_text_embedding.shape[0],100,category_text_embedding.shape[2]]),
+#             output, dim=-1)[:valid_joint_num].cpu()))
+#
+#         joint_cos_score = np.mean(np.array(F.cosine_similarity(
+#             residual_joint_text_embedding, output, dim=-1).squeeze(0)[:valid_joint_num].cpu()))
+#
+#         self.text_scores = (self.text_scores * self.case_num + text_cos_score) / (self.case_num + 1)
+#         self.img_scores = (self.img_scores * self.case_num + img_cos_score) / (self.case_num + 1)
+#         self.joint_scores = (self.joint_scores * self.case_num + joint_cos_score) / (self.case_num + 1)
+#         self.case_num += 1
+#         print(" text_cos_score: {}, img_cos_score: {}, joint_cos_score: {}".format(text_cos_score, img_cos_score, joint_cos_score))
+#         return output
+#
+#     def process(self, image_embedding, joint_text_embedding, category_text_embedding):
+#         return self.forward(image_embedding, joint_text_embedding, category_text_embedding)
 
 class SimpleMultiModalDoubleEncoder(nn.Module):
     """
