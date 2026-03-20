@@ -6,13 +6,7 @@ This repo is the official implementation of ["CapeNext: Rethinking and Refining 
 
 ## Introduction
 
-**CapeNext** is available at [arXiv](https://arxiv.org/pdf/2511.13102). It's a new framework that innovatively integrates hierarchical cross-modal interaction
-
-with dual-stream feature refinement, enhancing the joint embedding with both class-level and instance-specific cues from
-
-textual description and specific images. Experiments on the MP-100 dataset demonstrate that, regardless of the network
-
-backbone, CapeNext consistently outperforms state-of-the-art CAPE methods by a large margin.
+**CapeNext** is available at [arXiv](https://arxiv.org/pdf/2511.13102). It's a new framework that innovatively integrates hierarchical cross-modal interaction with dual-stream feature refinement, enhancing the joint embedding with both class-level and instance-specific cues from textual description and specific images. Experiments on the MP-100 dataset demonstrate that, regardless of the network backbone, CapeNext consistently outperforms state-of-the-art CAPE methods by a large margin.
 
 ![mainFig](./assets/mainFig.png)
 

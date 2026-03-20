@@ -183,7 +183,7 @@ class PoseHead(nn.Module):
                                                                                    self.kpt_branch,
                                                                                    skeleton, return_attn_map=True)
 
-        output_kpts = []
+        output_kpts = []  # 每一层decoder的结果累加
         for idx in range(outs_dec.shape[0]):
             layer_delta_unsig = self.kpt_branch[idx](outs_dec[idx])
             layer_outputs_unsig = layer_delta_unsig + inverse_sigmoid(
