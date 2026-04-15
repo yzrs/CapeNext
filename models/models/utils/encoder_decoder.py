@@ -62,7 +62,7 @@ class ProposalGenerator(nn.Module):
         support_feat = support_feat.transpose(0, 1)
         nq = support_feat.shape[1]
 
-        fs_proj = self.support_proj(support_feat)  # [bs, query, c]
+        fs_proj = self.support_proj(support_feat)  # [bs, qu ery, c]
         fq_proj = self.query_proj(query_feat)  # [bs, hw, c]
         pattern_attention = self.dynamic_act(self.dynamic_proj(fs_proj))  # [bs, query, c]
 
